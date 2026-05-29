@@ -63,22 +63,57 @@ class MasterPocketApp extends StatelessWidget {
   }
 }
 
-class MyHomePage extends ConsumerWidget {
+class MyHomePage extends ConsumerStatefulWidget {
   const MyHomePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends ConsumerState<MyHomePage> {
+  String? _promptedBudgetMonthKey;
+  bool _budgetDialogOpen = false;
+
+  Future<void> _openBudgetDialog({bool fromMonthlyPrompt = false}) async {
+    if (_budgetDialogOpen || !mounted) return;
+
+    _budgetDialogOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _SetBudgetDialog(fromMonthlyPrompt: fromMonthlyPrompt),
+      );
+    } finally {
+      _budgetDialogOpen = false;
+    }
+  }
+
+  void _queueMonthlyBudgetPrompt(double budget) {
+    if (budget > 0 || _budgetDialogOpen) return;
+
+    final now = DateTime.now();
+    final monthKey = _budgetPromptMonthKey(now);
+    if (_promptedBudgetMonthKey == monthKey) return;
+
+    _promptedBudgetMonthKey = monthKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openBudgetDialog(fromMonthlyPrompt: true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final txsAsync = ref.watch(transactionsProvider);
     final budgetAsync = ref.watch(monthlyBudgetProvider);
     final spent = ref.watch(monthlyExpenseTotalProvider);
     final categoryTotals = ref.watch(categoryTotalsProvider);
 
-    Future<void> openBudgetDialog() async {
-      await showDialog(
-        context: context,
-        builder: (_) => const _SetBudgetDialog(),
-      );
-    }
+    budgetAsync.when<void>(
+      data: _queueMonthlyBudgetPrompt,
+      loading: () {},
+      error: (_, __) {},
+    );
 
     return Scaffold(
       body: SafeArea(
@@ -117,7 +152,7 @@ class MyHomePage extends ConsumerWidget {
                         spent: spent,
                         income: income,
                         budget: budgetValue,
-                        onSetBudget: openBudgetDialog,
+                        onSetBudget: () => _openBudgetDialog(),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -303,7 +338,7 @@ class _BudgetOverviewCard extends StatelessWidget {
                   ? overBudget
                         ? 'Over by ${_formatCurrency(remaining.abs())}'
                         : 'Available ${_formatCurrency(remaining)}'
-                  : 'Add your monthly budget',
+                  : "Add this month's budget",
               style: textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: overBudget ? scheme.error : scheme.onSurface,
@@ -356,7 +391,7 @@ class _BudgetOverviewCard extends StatelessWidget {
               child: TextButton.icon(
                 onPressed: onSetBudget,
                 icon: const Icon(Icons.edit_outlined),
-                label: Text(hasBudget ? 'Update budget' : 'Set budget'),
+                label: Text(hasBudget ? 'Update this month' : 'Set this month'),
               ),
             ),
           ],
@@ -471,7 +506,7 @@ class _CategoryPieCard extends StatelessWidget {
       return _InfoCard(
         icon: Icons.pie_chart_outline,
         title: 'Budget breakdown',
-        message: 'Set a budget to compare spending by category.',
+        message: "Set this month's budget to compare spending by category.",
       );
     }
 
@@ -774,7 +809,9 @@ class _TransactionTile extends StatelessWidget {
 }
 
 class _SetBudgetDialog extends ConsumerStatefulWidget {
-  const _SetBudgetDialog();
+  final bool fromMonthlyPrompt;
+
+  const _SetBudgetDialog({this.fromMonthlyPrompt = false});
 
   @override
   ConsumerState<_SetBudgetDialog> createState() => _SetBudgetDialogState();
@@ -793,8 +830,8 @@ class _SetBudgetDialogState extends ConsumerState<_SetBudgetDialog> {
 
   Future<void> _save() async {
     final value = double.tryParse(_ctrl.text.trim().replaceAll(',', ''));
-    if (value == null || value < 0) {
-      setState(() => _errorText = 'Enter a valid budget amount');
+    if (value == null || value <= 0) {
+      setState(() => _errorText = 'Enter a budget greater than 0');
       return;
     }
 
@@ -818,26 +855,39 @@ class _SetBudgetDialogState extends ConsumerState<_SetBudgetDialog> {
     }
 
     return AlertDialog(
-      title: const Text('Monthly budget'),
-      content: TextField(
-        controller: _ctrl,
-        autofocus: true,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          labelText: 'Amount',
-          prefixText: 'RM ',
-          hintText: '1000',
-          errorText: _errorText,
-        ),
-        onChanged: (_) {
-          if (_errorText != null) setState(() => _errorText = null);
-        },
-        onSubmitted: (_) => _save(),
+      title: const Text("This month's budget"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.fromMonthlyPrompt) ...[
+            Text(
+              'Enter your budget for ${_formatMonth(DateTime.now())}.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 14),
+          ],
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Amount',
+              prefixText: 'RM ',
+              hintText: '1000',
+              errorText: _errorText,
+            ),
+            onChanged: (_) {
+              if (_errorText != null) setState(() => _errorText = null);
+            },
+            onSubmitted: (_) => _save(),
+          ),
+        ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(widget.fromMonthlyPrompt ? 'Not now' : 'Cancel'),
         ),
         FilledButton.icon(
           onPressed: _save,
@@ -1123,6 +1173,11 @@ String _formatMonth(DateTime date) {
     'December',
   ];
   return '${months[date.month - 1]} ${date.year}';
+}
+
+String _budgetPromptMonthKey(DateTime date) {
+  final month = date.month.toString().padLeft(2, '0');
+  return '${date.year}-$month';
 }
 
 String _sectionTitle(double value, double budget) {

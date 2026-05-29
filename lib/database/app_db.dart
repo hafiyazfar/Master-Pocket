@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 class AppDb {
   static const _dbName = 'pocket.sqlite';
-  static const _dbVersion = 2; // bump version for migration
+  static const _dbVersion = 2;
 
   static const txTable = 'transactions';
 
@@ -38,8 +38,6 @@ CREATE TABLE settings (
   value REAL NOT NULL
 )
 ''');
-
-        await db.insert('settings', {'key': 'monthly_budget', 'value': 0.0});
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // If upgrading from v1 -> v2, add settings table
@@ -50,16 +48,6 @@ CREATE TABLE IF NOT EXISTS settings (
   value REAL NOT NULL
 )
 ''');
-
-          final rows = await db.query(
-            'settings',
-            where: 'key = ?',
-            whereArgs: ['monthly_budget'],
-            limit: 1,
-          );
-          if (rows.isEmpty) {
-            await db.insert('settings', {'key': 'monthly_budget', 'value': 0.0});
-          }
         }
       },
     );
@@ -85,24 +73,28 @@ CREATE TABLE IF NOT EXISTS settings (
   }
 
   // ---- budget (settings) ----
-  Future<double> getMonthlyBudget() async {
+  Future<double> getMonthlyBudget({DateTime? month}) async {
     final db = await database;
     final rows = await db.query(
       'settings',
       where: 'key = ?',
-      whereArgs: ['monthly_budget'],
+      whereArgs: [_monthlyBudgetKey(month ?? DateTime.now())],
       limit: 1,
     );
     if (rows.isEmpty) return 0.0;
     return (rows.first['value'] as num).toDouble();
   }
 
-  Future<void> setMonthlyBudget(double value) async {
+  Future<void> setMonthlyBudget(double value, {DateTime? month}) async {
     final db = await database;
-    await db.insert(
-      'settings',
-      {'key': 'monthly_budget', 'value': value},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('settings', {
+      'key': _monthlyBudgetKey(month ?? DateTime.now()),
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  String _monthlyBudgetKey(DateTime month) {
+    final monthPart = month.month.toString().padLeft(2, '0');
+    return 'monthly_budget_${month.year}_$monthPart';
   }
 }

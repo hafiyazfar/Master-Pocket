@@ -40,6 +40,16 @@ class _FakeBudgetNotifier extends BudgetNotifier {
   Future<double> build() async => 1000;
 }
 
+class _NoBudgetNotifier extends BudgetNotifier {
+  @override
+  Future<double> build() async => 0;
+
+  @override
+  Future<void> set(double value) async {
+    state = AsyncData(value);
+  }
+}
+
 void main() {
   testWidgets('home page renders budget overview without layout errors', (
     tester,
@@ -62,6 +72,32 @@ void main() {
     await tester.tap(find.byType(PieChart), warnIfMissed: false);
     await tester.pump();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home page prompts for monthly budget when none is set', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          transactionsProvider.overrideWith(_FakeTransactionsNotifier.new),
+          monthlyBudgetProvider.overrideWith(_NoBudgetNotifier.new),
+        ],
+        child: const MaterialApp(home: MyHomePage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text("This month's budget"), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '1250');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Available RM 1237.50'), findsOneWidget);
   });
 
   testWidgets('add transaction form renders primary fields', (tester) async {

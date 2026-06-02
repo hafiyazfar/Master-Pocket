@@ -13,6 +13,7 @@ class _FakeTransactionsNotifier extends TransactionsNotifier {
   @override
   Future<List<Tx>> build() async {
     final now = DateTime.now();
+    final previousMonth = DateTime(now.year, now.month - 1, 12);
 
     return [
       Tx(
@@ -30,6 +31,22 @@ class _FakeTransactionsNotifier extends TransactionsNotifier {
         date: now,
         type: TxType.income,
         category: 'Salary',
+      ),
+      Tx(
+        id: 'previous-expense-1',
+        title: 'Headphones',
+        amount: 900,
+        date: previousMonth,
+        type: TxType.expense,
+        category: 'Shopping',
+      ),
+      Tx(
+        id: 'previous-income-1',
+        title: 'Freelance',
+        amount: 900,
+        date: previousMonth,
+        type: TxType.income,
+        category: 'Side job',
       ),
     ];
   }
@@ -66,9 +83,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Master Pocket'), findsOneWidget);
+    expect(find.text('Available balance'), findsNothing);
     expect(find.text('Monthly budget'), findsOneWidget);
     expect(find.text('Available RM 987.50'), findsOneWidget);
 
+    await tester.scrollUntilVisible(find.byType(PieChart), 300);
     await tester.tap(find.byType(PieChart), warnIfMissed: false);
     await tester.pump();
     expect(tester.takeException(), isNull);
@@ -110,5 +129,56 @@ void main() {
     expect(find.text('Income'), findsOneWidget);
     expect(find.text('Amount'), findsOneWidget);
     expect(find.text('Category'), findsOneWidget);
+  });
+
+  testWidgets('reports tab shows previous month report', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          transactionsProvider.overrideWith(_FakeTransactionsNotifier.new),
+          monthlyBudgetProvider.overrideWith(_FakeBudgetNotifier.new),
+        ],
+        child: const MaterialApp(home: MyHomePage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Reports'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Review previous months'), findsOneWidget);
+    expect(find.text('2 entries'), findsOneWidget);
+    expect(find.text('Top spending categories'), findsOneWidget);
+    expect(find.textContaining('Shopping'), findsWidgets);
+  });
+
+  testWidgets('savings tab builds AI recommendations from a goal', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          transactionsProvider.overrideWith(_FakeTransactionsNotifier.new),
+          monthlyBudgetProvider.overrideWith(_FakeBudgetNotifier.new),
+        ],
+        child: const MaterialApp(home: MyHomePage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Savings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI savings coach'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(0), 'Laptop');
+    await tester.enterText(find.byType(TextField).at(1), '3000');
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI plan for Laptop'), findsOneWidget);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.text('AI recommendations'), findsOneWidget);
+    expect(find.textContaining('weekly'), findsWidgets);
   });
 }

@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:master_pocket/models/transactions.dart';
 import 'package:master_pocket/pages/add_transaction_page.dart';
+import 'package:master_pocket/pages/reports_page.dart';
+import 'package:master_pocket/pages/savings_page.dart';
 import 'package:master_pocket/providers/budget_provider.dart';
 import 'package:master_pocket/providers/category_totals_provider.dart';
 import 'package:master_pocket/providers/transactions_provider.dart';
+import 'package:master_pocket/theme/wallet_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,46 +21,12 @@ class MasterPocketApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF0F766E);
-    final scheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.light,
-    );
-
     return MaterialApp(
       title: 'Master Pocket',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: scheme,
-        scaffoldBackgroundColor: const Color(0xFFF7F8F5),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Color(0xFFF7F8F5),
-        ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          color: scheme.surface,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.55),
-            ),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: scheme.surface,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: scheme.outlineVariant),
-          ),
-        ),
-      ),
+      theme: buildWalletTheme(Brightness.light),
+      darkTheme: buildWalletTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       home: const MyHomePage(),
     );
   }
@@ -73,6 +42,7 @@ class MyHomePage extends ConsumerStatefulWidget {
 class _MyHomePageState extends ConsumerState<MyHomePage> {
   String? _promptedBudgetMonthKey;
   bool _budgetDialogOpen = false;
+  int _selectedIndex = 0;
 
   Future<void> _openBudgetDialog({bool fromMonthlyPrompt = false}) async {
     if (_budgetDialogOpen || !mounted) return;
@@ -102,6 +72,12 @@ class _MyHomePageState extends ConsumerState<MyHomePage> {
     });
   }
 
+  Future<void> _openAddTransaction() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AddTransactionPage()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final txsAsync = ref.watch(transactionsProvider);
@@ -117,109 +93,147 @@ class _MyHomePageState extends ConsumerState<MyHomePage> {
 
     return Scaffold(
       body: SafeArea(
-        child: txsAsync.when(
-          loading: () => const _LoadingState(),
-          error: (error, _) => _ErrorState(
-            message: 'Could not load your transactions.',
-            detail: error.toString(),
-            onRetry: () => ref.invalidate(transactionsProvider),
-          ),
-          data: (txs) {
-            final now = DateTime.now();
-            final monthlyTxs = _transactionsForMonth(txs, now);
-            final income = _sumByType(monthlyTxs, TxType.income);
-            final budget = budgetAsync.when(
-              data: (value) => value,
-              loading: () => 0.0,
-              error: (_, __) => 0.0,
-            );
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: _selectedIndex == 0
+              ? KeyedSubtree(
+                  key: const ValueKey('dashboard-tab'),
+                  child: txsAsync.when(
+                    loading: () => const _LoadingState(),
+                    error: (error, _) => _ErrorState(
+                      message: 'Could not load your transactions.',
+                      detail: error.toString(),
+                      onRetry: () => ref.invalidate(transactionsProvider),
+                    ),
+                    data: (txs) {
+                      final now = DateTime.now();
+                      final monthlyTxs = _transactionsForMonth(txs, now);
+                      final income = _sumByType(monthlyTxs, TxType.income);
+                      final budget = budgetAsync.when(
+                        data: (value) => value,
+                        loading: () => 0.0,
+                        error: (_, __) => 0.0,
+                      );
 
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                  children: [
-                    _DashboardHeader(monthLabel: _formatMonth(now)),
-                    const SizedBox(height: 18),
-                    budgetAsync.when(
-                      loading: () => const _BudgetLoadingCard(),
-                      error: (error, _) => _InlineErrorCard(
-                        title: 'Budget unavailable',
-                        message: error.toString(),
-                      ),
-                      data: (budgetValue) => _BudgetOverviewCard(
-                        spent: spent,
-                        income: income,
-                        budget: budgetValue,
-                        onSetBudget: () => _openBudgetDialog(),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _CategoryPieCard(
-                      categoryTotals: categoryTotals,
-                      spent: spent,
-                      budget: budget,
-                    ),
-                    const SizedBox(height: 24),
-                    _SectionHeader(
-                      title: 'Recent activity',
-                      trailing: txs.isEmpty
-                          ? null
-                          : Text(
-                              '${txs.length} total',
-                              style: Theme.of(context).textTheme.labelLarge,
-                            ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (txs.isEmpty)
-                      const _EmptyTransactions()
-                    else
-                      ...txs.map(
-                        (tx) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _DismissibleTransactionTile(
-                            tx: tx,
-                            onDelete: () async {
-                              await ref
-                                  .read(transactionsProvider.notifier)
-                                  .deleteTx(tx.id);
-                              if (!context.mounted) return;
-
-                              ScaffoldMessenger.of(context)
-                                ..hideCurrentSnackBar()
-                                ..showSnackBar(
-                                  SnackBar(
-                                    content: Text('${tx.title} deleted'),
-                                    action: SnackBarAction(
-                                      label: 'Undo',
-                                      onPressed: () {
-                                        ref
+                      return Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 820),
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                            children: [
+                              _DashboardHeader(monthLabel: _formatMonth(now)),
+                              const SizedBox(height: 16),
+                              budgetAsync.when(
+                                loading: () => const _BudgetLoadingCard(),
+                                error: (error, _) => _InlineErrorCard(
+                                  title: 'Budget unavailable',
+                                  message: error.toString(),
+                                ),
+                                data: (budgetValue) => _BudgetOverviewCard(
+                                  spent: spent,
+                                  income: income,
+                                  budget: budgetValue,
+                                  onSetBudget: () => _openBudgetDialog(),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              _CategoryPieCard(
+                                categoryTotals: categoryTotals,
+                                spent: spent,
+                                budget: budget,
+                              ),
+                              const SizedBox(height: 24),
+                              _SectionHeader(
+                                title: 'Recent activity',
+                                trailing: txs.isEmpty
+                                    ? null
+                                    : Text(
+                                        '${txs.length} total',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelLarge,
+                                      ),
+                              ),
+                              const SizedBox(height: 10),
+                              if (txs.isEmpty)
+                                const _EmptyTransactions()
+                              else
+                                ...txs.map(
+                                  (tx) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: _DismissibleTransactionTile(
+                                      tx: tx,
+                                      onDelete: () async {
+                                        await ref
                                             .read(transactionsProvider.notifier)
-                                            .addTx(tx);
+                                            .deleteTx(tx.id);
+                                        if (!context.mounted) return;
+
+                                        ScaffoldMessenger.of(context)
+                                          ..hideCurrentSnackBar()
+                                          ..showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                '${tx.title} deleted',
+                                              ),
+                                              action: SnackBarAction(
+                                                label: 'Undo',
+                                                onPressed: () {
+                                                  ref
+                                                      .read(
+                                                        transactionsProvider
+                                                            .notifier,
+                                                      )
+                                                      .addTx(tx);
+                                                },
+                                              ),
+                                            ),
+                                          );
                                       },
                                     ),
                                   ),
-                                );
-                            },
+                                ),
+                            ],
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
+                      );
+                    },
+                  ),
+                )
+              : _selectedIndex == 1
+              ? const ReportsPage(key: ValueKey('reports-tab'))
+              : const SavingsPage(key: ValueKey('savings-tab')),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const AddTransactionPage()));
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add transaction'),
+      floatingActionButton: _selectedIndex == 0
+          ? FloatingActionButton.extended(
+              onPressed: _openAddTransaction,
+              icon: const Icon(Icons.add),
+              label: const Text('Add transaction'),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) => setState(() {
+          _selectedIndex = index;
+        }),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Reports',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.savings_outlined),
+            selectedIcon: Icon(Icons.savings),
+            label: 'Savings',
+          ),
+        ],
       ),
     );
   }
@@ -301,10 +315,10 @@ class _BudgetOverviewCard extends StatelessWidget {
     final statusColor = !hasBudget
         ? scheme.secondary
         : overBudget
-        ? scheme.error
+        ? walletExpenseColor(context)
         : progress >= 0.85
-        ? const Color(0xFFB7791F)
-        : const Color(0xFF15803D);
+        ? walletWarningColor(context)
+        : walletSuccessColor(context);
     final statusLabel = !hasBudget
         ? 'Budget not set'
         : overBudget
@@ -341,7 +355,9 @@ class _BudgetOverviewCard extends StatelessWidget {
                   : "Add this month's budget",
               style: textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
-                color: overBudget ? scheme.error : scheme.onSurface,
+                color: overBudget
+                    ? walletExpenseColor(context)
+                    : scheme.onSurface,
               ),
             ),
             const SizedBox(height: 14),
@@ -362,7 +378,7 @@ class _BudgetOverviewCard extends StatelessWidget {
                     label: 'Spent',
                     value: _formatCurrency(spent),
                     icon: Icons.arrow_upward,
-                    color: const Color(0xFFDC2626),
+                    color: walletExpenseColor(context),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -380,7 +396,7 @@ class _BudgetOverviewCard extends StatelessWidget {
                     label: 'Income',
                     value: _formatCurrency(income),
                     icon: Icons.arrow_downward,
-                    color: const Color(0xFF16A34A),
+                    color: walletSuccessColor(context),
                   ),
                 ),
               ],
@@ -458,7 +474,15 @@ class _MetricTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 18),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 17),
+            ),
             const Spacer(),
             Text(
               label,
@@ -546,7 +570,9 @@ class _CategoryPieCard extends StatelessWidget {
               trailing: Text(
                 '${((spent / budget) * 100).clamp(0, 999).toStringAsFixed(0)}% used',
                 style: textTheme.labelLarge?.copyWith(
-                  color: overBudget ? scheme.error : scheme.onSurfaceVariant,
+                  color: overBudget
+                      ? walletExpenseColor(context)
+                      : scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -740,12 +766,10 @@ class _TransactionTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isExpense = tx.type == TxType.expense;
     final amountColor = isExpense
-        ? const Color(0xFFDC2626)
-        : const Color(0xFF15803D);
+        ? walletExpenseColor(context)
+        : walletSuccessColor(context);
     final sign = isExpense ? '-' : '+';
-    final color = isExpense
-        ? _categoryColor(tx.category)
-        : const Color(0xFF16A34A);
+    final color = isExpense ? _categoryColor(tx.category) : amountColor;
 
     return Card(
       child: Padding(

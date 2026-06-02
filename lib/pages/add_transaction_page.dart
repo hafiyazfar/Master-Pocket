@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:master_pocket/models/transactions.dart';
 import 'package:master_pocket/providers/transactions_provider.dart';
+import 'package:master_pocket/theme/wallet_theme.dart';
 
 class AddTransactionPage extends ConsumerStatefulWidget {
   const AddTransactionPage({super.key});
@@ -104,6 +105,9 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final actionColor = _type == TxType.expense
+        ? walletExpenseColor(context)
+        : walletSuccessColor(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -117,167 +121,269 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         ],
       ),
       body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-            children: [
-              SegmentedButton<TxType>(
-                segments: const [
-                  ButtonSegment(
-                    value: TxType.expense,
-                    icon: Icon(Icons.arrow_upward),
-                    label: Text('Expense'),
-                  ),
-                  ButtonSegment(
-                    value: TxType.income,
-                    icon: Icon(Icons.arrow_downward),
-                    label: Text('Income'),
-                  ),
-                ],
-                selected: {_type},
-                onSelectionChanged: (selected) => _setType(selected.first),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _amountCtrl,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                textInputAction: TextInputAction.next,
-                style: textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Amount',
-                  prefixText: 'RM ',
-                  hintText: '12.50',
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Enter amount';
-                  }
-                  final amount = double.tryParse(
-                    value.trim().replaceAll(',', ''),
-                  );
-                  if (amount == null || amount <= 0) {
-                    return 'Enter a valid amount';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _titleCtrl,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Title',
-                  hintText: 'Lunch',
-                  prefixIcon: Icon(Icons.notes_outlined),
-                ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter a title'
-                    : null,
-                onFieldSubmitted: (_) => _save(),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Category',
-                style: textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                 children: [
-                  for (final category in _categories)
-                    ChoiceChip(
-                      selected: category == _category,
-                      avatar: Icon(
-                        _categoryIcon(category),
-                        size: 18,
-                        color: category == _category
-                            ? scheme.onSecondaryContainer
-                            : _categoryColor(category),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SegmentedButton<TxType>(
+                            segments: const [
+                              ButtonSegment(
+                                value: TxType.expense,
+                                icon: Icon(Icons.arrow_upward),
+                                label: Text('Expense'),
+                              ),
+                              ButtonSegment(
+                                value: TxType.income,
+                                icon: Icon(Icons.arrow_downward),
+                                label: Text('Income'),
+                              ),
+                            ],
+                            selected: {_type},
+                            onSelectionChanged: (selected) =>
+                                _setType(selected.first),
+                          ),
+                          const SizedBox(height: 18),
+                          TextFormField(
+                            controller: _amountCtrl,
+                            autofocus: true,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textInputAction: TextInputAction.next,
+                            style: textTheme.headlineSmall?.copyWith(
+                              color: actionColor,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'Amount',
+                              prefixText: 'RM ',
+                              hintText: '12.50',
+                              prefixIcon: Icon(
+                                Icons.payments_outlined,
+                                color: actionColor,
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter amount';
+                              }
+                              final amount = double.tryParse(
+                                value.trim().replaceAll(',', ''),
+                              );
+                              if (amount == null || amount <= 0) {
+                                return 'Enter a valid amount';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _titleCtrl,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Title',
+                              hintText: 'Lunch',
+                              prefixIcon: Icon(Icons.notes_outlined),
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? 'Enter a title'
+                                : null,
+                            onFieldSubmitted: (_) => _save(),
+                          ),
+                        ],
                       ),
-                      label: Text(category),
-                      onSelected: (_) => setState(() => _category = category),
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FormSectionTitle(
+                            title: 'Category',
+                            icon: Icons.category_outlined,
+                            color: actionColor,
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final category in _categories)
+                                ChoiceChip(
+                                  selected: category == _category,
+                                  selectedColor: actionColor.withValues(
+                                    alpha: 0.14,
+                                  ),
+                                  backgroundColor: scheme.surfaceContainerLow,
+                                  side: BorderSide(
+                                    color: category == _category
+                                        ? actionColor
+                                        : scheme.outlineVariant,
+                                  ),
+                                  avatar: Icon(
+                                    _categoryIcon(category),
+                                    size: 18,
+                                    color: category == _category
+                                        ? actionColor
+                                        : _categoryColor(category),
+                                  ),
+                                  label: Text(category),
+                                  labelStyle: TextStyle(
+                                    color: category == _category
+                                        ? scheme.onSurface
+                                        : scheme.onSurfaceVariant,
+                                    fontWeight: category == _category
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                  ),
+                                  onSelected: (_) =>
+                                      setState(() => _category = category),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 22),
+                          _FormSectionTitle(
+                            title: 'Date',
+                            icon: Icons.calendar_today_outlined,
+                            color: scheme.primary,
+                          ),
+                          const SizedBox(height: 10),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: _pickDate,
+                            child: Ink(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: scheme.outlineVariant,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: scheme.primaryContainer,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.calendar_today_outlined,
+                                      color: scheme.onPrimaryContainer,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _formatDate(_date),
+                                      style: textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 20),
-              Text(
-                'Date',
-                style: textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 10),
-              InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: _pickDate,
-                child: Ink(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: scheme.outlineVariant),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: scheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.calendar_today_outlined,
-                          color: scheme.onPrimaryContainer,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _formatDate(_date),
-                          style: textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
       bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          child: FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            label: Text(_saving ? 'Saving' : 'Save transaction'),
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: scheme.onPrimary,
+                          ),
+                        )
+                      : const Icon(Icons.check),
+                  label: Text(_saving ? 'Saving' : 'Save transaction'),
+                ),
+              ),
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _FormSectionTitle extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+
+  const _FormSectionTitle({
+    required this.title,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 17),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+      ],
     );
   }
 }
